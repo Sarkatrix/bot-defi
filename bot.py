@@ -52,7 +52,7 @@ async def on_ready():
         synced = await tree.sync()
         print(f"🌐 {len(synced)} commande(s) slash synchronisée(s).")
     except Exception as e:
-        print(f"Erreur de synchronisation des slash commands : {e}")
+        print(f"❌ Erreur de synchronisation : {e}")
 
 async def envoyer_defi(ctx, defis):
     if not defis:
@@ -96,7 +96,7 @@ async def slash_defilbl(interaction: discord.Interaction):
 @app_commands.describe(texte="Le texte du défi à ajouter")
 async def slash_ajoutdefi(interaction: discord.Interaction, texte: str):
     sauvegarder_defi(texte)
-    await interaction.response.send_message("", ephemeral=True)
+    await interaction.response.send_message("✅", ephemeral=True, delete_after=1)
 
 @tree.command(name="classement", description="Affiche le classement des membres par points")
 async def slash_classement(interaction: discord.Interaction):
