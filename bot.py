@@ -75,9 +75,43 @@ async def defi(ctx):
         await ctx.send(f"⏱️ Défi expiré : personne n’a validé dans l’heure.")
 
 @bot.command()
+async def defiLBL(ctx):
+    defis = charger_defis_perso()
+    if not defis:
+        await ctx.send("❌ Aucun défi personnalisé n’a encore été ajouté.")
+        return
+
+    defi_choisi = random.choice(defis)
+    auteur = ctx.author
+
+    message = await ctx.send(f"{auteur.mention}, ton défi LBL est : **{defi_choisi}**\n✅ Un autre membre doit réagir pour valider le point.")
+    await message.add_reaction("✅")
+
+    def check(reaction, user):
+        return (
+            reaction.message.id == message.id and
+            str(reaction.emoji) == "✅" and
+            user != auteur and
+            not user.bot
+        )
+
+    try:
+        reaction, user = await bot.wait_for("reaction_add", timeout=3600.0, check=check)
+        points = charger_points()
+        auteur_id = str(auteur.id)
+        points[auteur_id] = points.get(auteur_id, 0) + 1
+        sauvegarder_points(points)
+        await ctx.send(f"🎉 Défi validé par {user.mention} ! {auteur.mention} gagne 1 point.")
+    except asyncio.TimeoutError:
+        await ctx.send(f"⏱️ Défi expiré : personne n’a validé dans l’heure.")
+
+@bot.command()
 async def ajoutdefi(ctx, *, nouveau_defi):
     sauvegarder_defi(nouveau_defi)
-    await ctx.send(f"✅ Défi ajouté : « {nouveau_defi} » par {ctx.author.display_name}.")
+    try:
+        await ctx.message.delete()
+    except:
+        pass
 
 @bot.command()
 async def classement(ctx):
