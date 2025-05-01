@@ -49,10 +49,11 @@ def sauvegarder_points(points):
 async def on_ready():
     print(f"✅ Connecté en tant que {bot.user}")
     try:
-        synced = await tree.sync()
+        synced = await bot.tree.sync()
         print(f"🌐 {len(synced)} commande(s) slash synchronisée(s).")
     except Exception as e:
         print(f"❌ Erreur de synchronisation : {e}")
+
 
 async def envoyer_defi(ctx, defis):
     if not defis:
