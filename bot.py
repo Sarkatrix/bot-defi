@@ -3,9 +3,13 @@ from discord.ext import commands
 import random
 import os
 import json
+import asyncio
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.reactions = True
+intents.guilds = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 FICHIER_DEFIS = "defis.txt"
@@ -47,11 +51,28 @@ async def on_ready():
 async def defi(ctx):
     defis = defis_de_base + charger_defis_perso()
     defi_choisi = random.choice(defis)
-    auteur_id = str(ctx.author.id)
-    points = charger_points()
-    points[auteur_id] = points.get(auteur_id, 0) + 1
-    sauvegarder_points(points)
-    await ctx.send(f"{ctx.author.mention}, ton défi est : **{defi_choisi}** (+1 point)")
+    auteur = ctx.author
+
+    message = await ctx.send(f"{auteur.mention}, ton défi est : **{defi_choisi}**\n✅ Un autre membre doit réagir pour valider le point.")
+    await message.add_reaction("✅")
+
+    def check(reaction, user):
+        return (
+            reaction.message.id == message.id and
+            str(reaction.emoji) == "✅" and
+            user != auteur and
+            not user.bot
+        )
+
+    try:
+        reaction, user = await bot.wait_for("reaction_add", timeout=3600.0, check=check)
+        points = charger_points()
+        auteur_id = str(auteur.id)
+        points[auteur_id] = points.get(auteur_id, 0) + 1
+        sauvegarder_points(points)
+        await ctx.send(f"🎉 Défi validé par {user.mention} ! {auteur.mention} gagne 1 point.")
+    except asyncio.TimeoutError:
+        await ctx.send(f"⏱️ Défi expiré : personne n’a validé dans l’heure.")
 
 @bot.command()
 async def ajoutdefi(ctx, *, nouveau_defi):
