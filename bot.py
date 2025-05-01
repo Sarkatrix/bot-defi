@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 import random
 import os
@@ -11,6 +12,7 @@ intents.reactions = True
 intents.guilds = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+tree = bot.tree
 
 FICHIER_DEFIS = "defis.txt"
 FICHIER_POINTS = "points.json"
@@ -46,45 +48,20 @@ def sauvegarder_points(points):
 @bot.event
 async def on_ready():
     print(f"✅ Connecté en tant que {bot.user}")
-
-@bot.command()
-async def defi(ctx):
-    defis = defis_de_base + charger_defis_perso()
-    defi_choisi = random.choice(defis)
-    auteur = ctx.author
-
-    message = await ctx.send(f"{auteur.mention}, ton défi est : **{defi_choisi}**\n✅ Un autre membre doit réagir pour valider le point.")
-    await message.add_reaction("✅")
-
-    def check(reaction, user):
-        return (
-            reaction.message.id == message.id and
-            str(reaction.emoji) == "✅" and
-            user != auteur and
-            not user.bot
-        )
-
     try:
-        reaction, user = await bot.wait_for("reaction_add", timeout=3600.0, check=check)
-        points = charger_points()
-        auteur_id = str(auteur.id)
-        points[auteur_id] = points.get(auteur_id, 0) + 1
-        sauvegarder_points(points)
-        await ctx.send(f"🎉 Défi validé par {user.mention} ! {auteur.mention} gagne 1 point.")
-    except asyncio.TimeoutError:
-        await ctx.send(f"⏱️ Défi expiré : personne n’a validé dans l’heure.")
+        synced = await tree.sync()
+        print(f"🌐 {len(synced)} commande(s) slash synchronisée(s).")
+    except Exception as e:
+        print(f"Erreur de synchronisation des slash commands : {e}")
 
-@bot.command()
-async def defiLBL(ctx):
-    defis = charger_defis_perso()
+async def envoyer_defi(ctx, defis):
     if not defis:
-        await ctx.send("❌ Aucun défi personnalisé n’a encore été ajouté.")
+        await ctx.response.send_message("❌ Aucun défi disponible.", ephemeral=True)
         return
 
     defi_choisi = random.choice(defis)
-    auteur = ctx.author
-
-    message = await ctx.send(f"{auteur.mention}, ton défi LBL est : **{defi_choisi}**\n✅ Un autre membre doit réagir pour valider le point.")
+    auteur = ctx.user
+    message = await ctx.channel.send(f"{auteur.mention}, ton défi est : **{defi_choisi}**\n✅ Un autre membre doit réagir pour valider le point.")
     await message.add_reaction("✅")
 
     def check(reaction, user):
@@ -101,29 +78,37 @@ async def defiLBL(ctx):
         auteur_id = str(auteur.id)
         points[auteur_id] = points.get(auteur_id, 0) + 1
         sauvegarder_points(points)
-        await ctx.send(f"🎉 Défi validé par {user.mention} ! {auteur.mention} gagne 1 point.")
+        await ctx.channel.send(f"🎉 Défi validé par {user.mention} ! {auteur.mention} gagne 1 point.")
     except asyncio.TimeoutError:
-        await ctx.send(f"⏱️ Défi expiré : personne n’a validé dans l’heure.")
+        await ctx.channel.send(f"⏱️ Défi expiré : personne n’a validé dans l’heure.")
 
-@bot.command()
-async def ajoutdefi(ctx, *, nouveau_defi):
-    sauvegarder_defi(nouveau_defi)
-    try:
-        await ctx.message.delete()
-    except:
-        pass
+@tree.command(name="defi", description="Tire un défi aléatoire parmi tous les défis")
+async def slash_defi(interaction: discord.Interaction):
+    defis = defis_de_base + charger_defis_perso()
+    await envoyer_defi(interaction, defis)
 
-@bot.command()
-async def classement(ctx):
+@tree.command(name="defilbl", description="Tire un défi uniquement parmi les défis personnalisés")
+async def slash_defilbl(interaction: discord.Interaction):
+    defis = charger_defis_perso()
+    await envoyer_defi(interaction, defis)
+
+@tree.command(name="ajoutdefi", description="Ajoute un défi personnalisé de façon secrète")
+@app_commands.describe(texte="Le texte du défi à ajouter")
+async def slash_ajoutdefi(interaction: discord.Interaction, texte: str):
+    sauvegarder_defi(texte)
+    await interaction.response.send_message("", ephemeral=True)
+
+@tree.command(name="classement", description="Affiche le classement des membres par points")
+async def slash_classement(interaction: discord.Interaction):
     points = charger_points()
     classement = sorted(points.items(), key=lambda x: x[1], reverse=True)
     if not classement:
-        await ctx.send("Le classement est vide pour le moment.")
+        await interaction.response.send_message("Le classement est vide pour le moment.")
         return
     message = "**🏆 Classement des membres :**\n"
     for i, (user_id, score) in enumerate(classement, start=1):
         membre = await bot.fetch_user(int(user_id))
         message += f"{i}. {membre.name} — {score} point(s)\n"
-    await ctx.send(message)
+    await interaction.response.send_message(message)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
