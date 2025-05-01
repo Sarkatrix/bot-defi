@@ -4,10 +4,9 @@ from discord import app_commands
 import random
 import os
 import json
-from dotenv import load_dotenv
 
-# Charger le token depuis .env
-load_dotenv()
+# TOKEN DISCORD DIRECTEMENT DANS LE CODE (remplace ici par le tien)
+TOKEN = "TON_TOKEN_ICI"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -120,4 +119,5 @@ async def slash_classement(interaction: discord.Interaction):
         message += f"{i}. {membre.name} — {score} point(s)\n"
     await interaction.response.send_message(message)
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+# Lancer le bot avec le token directement
+bot.run(TOKEN)
