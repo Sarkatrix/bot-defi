@@ -5,8 +5,8 @@ import random
 import os
 import json
 
-# TOKEN DISCORD DIRECTEMENT DANS LE CODE (remplace ici par le tien)
-TOKEN = "TON_TOKEN_ICI"
+# Récupération du token depuis l'environnement Render
+TOKEN = os.environ["DISCORD_TOKEN"]
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -119,5 +119,5 @@ async def slash_classement(interaction: discord.Interaction):
         message += f"{i}. {membre.name} — {score} point(s)\n"
     await interaction.response.send_message(message)
 
-# Lancer le bot avec le token directement
+# Lancer le bot avec le token lu depuis l'environnement
 bot.run(TOKEN)
