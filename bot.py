@@ -1,52 +1,40 @@
 import discord
-from discord.ext import commands
 from discord import app_commands
+from discord.ext import commands
 import random
 import os
-import json
-
-# Récupération du token depuis l'environnement Render
-TOKEN = os.environ["DISCORD_TOKEN"]
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
-intents.guilds = True
-intents.members = True
+intents.messages = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="/", intents=intents)
 tree = bot.tree
 
-FICHIER_DEFIS = "defis.txt"
-FICHIER_POINTS = "points.json"
+# Chargement des fichiers
+defis_fichier = "defis.txt"
+defis_perso_fichier = "defis_perso.txt"
+classement_fichier = "classement.txt"
 
-defis_de_base = [
-    "Crie un mot au hasard en vocal maintenant.",
-    "Change ton pseudo en 'GigaNoob' pendant 10 minutes.",
-    "Fais un compliment sincère à un autre membre du serveur.",
-    "Fais un vocal de 10 secondes où tu parles comme un robot.",
-    "Envoie une photo de ton frigo sans contexte."
-]
+# Création des fichiers si inexistants
+for fichier in [defis_fichier, defis_perso_fichier, classement_fichier]:
+    if not os.path.exists(fichier):
+        with open(fichier, "w", encoding="utf-8") as f:
+            pass
 
-def charger_defis_perso():
-    if os.path.exists(FICHIER_DEFIS):
-        with open(FICHIER_DEFIS, "r", encoding="utf-8") as f:
-            return [ligne.strip() for ligne in f if ligne.strip()]
-    return []
+def ajouter_point(utilisateur):
+    classement = {}
+    with open(classement_fichier, "r", encoding="utf-8") as f:
+        for ligne in f:
+            nom, points = ligne.strip().split(":")
+            classement[nom] = int(points)
 
-def sauvegarder_defi(defi):
-    with open(FICHIER_DEFIS, "a", encoding="utf-8") as f:
-        f.write(defi + "\n")
+    classement[utilisateur] = classement.get(utilisateur, 0) + 1
 
-def charger_points():
-    if os.path.exists(FICHIER_POINTS):
-        with open(FICHIER_POINTS, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-def sauvegarder_points(points):
-    with open(FICHIER_POINTS, "w", encoding="utf-8") as f:
-        json.dump(points, f, indent=4)
+    with open(classement_fichier, "w", encoding="utf-8") as f:
+        for nom, points in classement.items():
+            f.write(f"{nom}:{points}\n")
 
 @bot.event
 async def on_ready():
@@ -57,67 +45,76 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Erreur de synchronisation : {e}")
 
-async def envoyer_defi(interaction: discord.Interaction, defis):
+@tree.command(name="ajoutdefi", description="Ajoute un défi personnalisé.")
+@app_commands.describe(defi="Le texte du défi à ajouter.")
+async def ajoutdefi(interaction: discord.Interaction, defi: str):
+    with open(defis_perso_fichier, "a", encoding="utf-8") as f:
+        f.write(defi + "\n")
+    await interaction.response.send_message("Défi ajouté !", ephemeral=True)
+
+@tree.command(name="defi", description="Tire un défi au hasard (de base ou perso).")
+async def defi(interaction: discord.Interaction):
+    with open(defis_fichier, "r", encoding="utf-8") as f:
+        defis = f.readlines()
+    with open(defis_perso_fichier, "r", encoding="utf-8") as f:
+        defis += f.readlines()
+
     if not defis:
-        await interaction.response.send_message("❌ Aucun défi disponible.", ephemeral=True)
+        await interaction.response.send_message("Aucun défi disponible.")
         return
 
-    defi_choisi = random.choice(defis)
-    auteur = interaction.user
-    await interaction.response.send_message(f"{auteur.mention}, ton défi est : **{defi_choisi}**\n✅ Un autre membre doit réagir pour valider le point.")
-    message = await interaction.original_response()
+    defi_choisi = random.choice(defis).strip()
+    message = await interaction.channel.send(f"🎯 Défi : **{defi_choisi}**\n\nRéagissez avec ✅ pour valider ce défi !")
     await message.add_reaction("✅")
 
     def check(reaction, user):
-        return (
-            reaction.message.id == message.id and
-            str(reaction.emoji) == "✅" and
-            user != auteur and
-            not user.bot
-        )
+        return reaction.message.id == message.id and str(reaction.emoji) == "✅" and user != interaction.client.user
 
-    try:
-        reaction, user = await bot.wait_for("reaction_add", timeout=3600.0, check=check)
-        points = charger_points()
-        auteur_id = str(auteur.id)
-        points[auteur_id] = points.get(auteur_id, 0) + 1
-        sauvegarder_points(points)
-        await message.channel.send(f"🎉 Défi validé par {user.mention} ! {auteur.mention} gagne 1 point.")
-    except:
-        await message.channel.send("⏱️ Temps écoulé. Personne n’a validé le défi.")
+    # Attente indéfinie d'une réaction (timer supprimé)
+    reaction, user = await bot.wait_for("reaction_add", check=check)
+    ajouter_point(user.name)
+    await interaction.channel.send(f"✅ Défi validé par {user.mention} ! +1 point.")
 
-@tree.command(name="defi", description="Tire un défi aléatoire parmi tous les défis")
-async def slash_defi(interaction: discord.Interaction):
-    defis = defis_de_base + charger_defis_perso()
-    await envoyer_defi(interaction, defis)
+@tree.command(name="defilbl", description="Tire un défi parmi ceux ajoutés via /ajoutdefi.")
+async def defilbl(interaction: discord.Interaction):
+    with open(defis_perso_fichier, "r", encoding="utf-8") as f:
+        defis = f.readlines()
 
-@tree.command(name="defilbl", description="Tire un défi uniquement parmi les défis personnalisés")
-async def slash_defilbl(interaction: discord.Interaction):
-    defis = charger_defis_perso()
-    await envoyer_defi(interaction, defis)
-
-@tree.command(name="ajoutdefi", description="Ajoute un défi personnalisé (visible uniquement pour toi)")
-@app_commands.describe(texte="Le texte du défi à ajouter")
-async def slash_ajoutdefi(interaction: discord.Interaction, texte: str):
-    if not texte.strip():
-        await interaction.response.send_message("❌ Le défi ne peut pas être vide.", ephemeral=True)
+    if not defis:
+        await interaction.response.send_message("Aucun défi personnalisé disponible.")
         return
 
-    sauvegarder_defi(texte.strip())
-    await interaction.response.send_message("✅ Défi ajouté avec succès.", ephemeral=True)
+    defi_choisi = random.choice(defis).strip()
+    message = await interaction.channel.send(f"🎯 Défi LBL : **{defi_choisi}**\n\nRéagissez avec ✅ pour valider ce défi !")
+    await message.add_reaction("✅")
 
-@tree.command(name="classement", description="Affiche le classement des membres par points")
-async def slash_classement(interaction: discord.Interaction):
-    points = charger_points()
-    classement = sorted(points.items(), key=lambda x: x[1], reverse=True)
-    if not classement:
-        await interaction.response.send_message("Le classement est vide pour le moment.")
-        return
-    message = "**🏆 Classement des membres :**\n"
-    for i, (user_id, score) in enumerate(classement, start=1):
-        membre = await bot.fetch_user(int(user_id))
-        message += f"{i}. {membre.name} — {score} point(s)\n"
+    def check(reaction, user):
+        return reaction.message.id == message.id and str(reaction.emoji) == "✅" and user != interaction.client.user
+
+    reaction, user = await bot.wait_for("reaction_add", check=check)
+    ajouter_point(user.name)
+    await interaction.channel.send(f"✅ Défi validé par {user.mention} ! +1 point.")
+
+@tree.command(name="classement", description="Affiche le classement des joueurs.")
+async def classement(interaction: discord.Interaction):
+    classement = []
+    with open(classement_fichier, "r", encoding="utf-8") as f:
+        for ligne in f:
+            nom, points = ligne.strip().split(":")
+            classement.append((nom, int(points)))
+
+    classement.sort(key=lambda x: x[1], reverse=True)
+
+    message = "🏆 **Classement des défis** :\n"
+    for i, (nom, points) in enumerate(classement, start=1):
+        message += f"{i}. {nom} - {points} point(s)\n"
+
     await interaction.response.send_message(message)
 
-# Lancer le bot avec le token lu depuis l'environnement
-bot.run(TOKEN)
+# Lancement du bot
+if __name__ == "__main__":
+    import asyncio
+    import os
+
+    TOKEN = os.environ["DISCORD_TOKEN"]
+    asyncio.run(bot.start(TOKEN))
