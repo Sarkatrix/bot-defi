@@ -7,12 +7,13 @@ import os
 intents = discord.Intents.default()
 intents.reactions = True
 intents.message_content = True
+intents.members = True  # nécessaire pour lister les membres
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 defis_fichier = "defis.txt"
 defis_custom_fichier = "defis_custom.txt"
 
-# Chargement des défis de base et personnalisés
+# Chargement des défis
 def charger_defis():
     defis = []
     if os.path.exists(defis_fichier):
@@ -43,47 +44,63 @@ def ajouter_point(utilisateur):
         for nom, points in classement.items():
             f.write(f"{nom}:{points}\n")
 
-@bot.tree.command(name="defi", description="Tire un défi aléatoire !")
+async def choisir_membre_aleatoire(guild, exclure=None):
+    membres = [m for m in guild.members if not m.bot and (exclure is None or m.id != exclure.id)]
+    return random.choice(membres) if membres else None
+
+@bot.tree.command(name="defi", description="Tire un défi aléatoire pour un membre du serveur.")
 async def defi(interaction: discord.Interaction):
     defis = charger_defis() + charger_defis_custom()
     if defis:
+        membre = await choisir_membre_aleatoire(interaction.guild)
+        if not membre:
+            await interaction.response.send_message("⚠️ Aucun membre valide à défier.", ephemeral=True)
+            return
+
         defi_choisi = random.choice(defis)
-        message = await interaction.channel.send(f"🎯 {interaction.user.mention}, ton défi est : **{defi_choisi}**\n\nUn autre membre doit réagir avec ✅ pour valider ce défi !")
+        await interaction.response.send_message(f"🎯 Le défi est pour {membre.mention} : **{defi_choisi}**", ephemeral=False)
+        message = await interaction.channel.send(f"🎯 {membre.mention}, ton défi est : **{defi_choisi}**\n\nUn autre membre doit réagir avec ✅ pour valider ce défi !")
         await message.add_reaction("✅")
 
         def check(reaction, user):
             return (
                 reaction.message.id == message.id and
                 str(reaction.emoji) == "✅" and
-                user.id != interaction.user.id and
+                user.id != membre.id and
                 not user.bot
             )
 
         reaction, user = await bot.wait_for("reaction_add", check=check)
-        ajouter_point(interaction.user.name)
-        await interaction.channel.send(f"✅ {interaction.user.mention} a validé son défi grâce à {user.mention} ! +1 point.")
+        ajouter_point(membre.name)
+        await interaction.channel.send(f"✅ {membre.mention} a validé son défi grâce à {user.mention} ! +1 point.")
     else:
         await interaction.response.send_message("⚠️ Aucun défi n'est disponible.")
 
-@bot.tree.command(name="defilbl", description="Tire un défi personnalisé ajouté par les membres !")
+@bot.tree.command(name="defilbl", description="Tire un défi personnalisé pour un membre aléatoire.")
 async def defilbl(interaction: discord.Interaction):
     defis = charger_defis_custom()
     if defis:
+        membre = await choisir_membre_aleatoire(interaction.guild)
+        if not membre:
+            await interaction.response.send_message("⚠️ Aucun membre valide à défier.", ephemeral=True)
+            return
+
         defi_choisi = random.choice(defis)
-        message = await interaction.channel.send(f"🎯 {interaction.user.mention}, ton défi personnalisé est : **{defi_choisi}**\n\nUn autre membre doit réagir avec ✅ pour valider ce défi !")
+        await interaction.response.send_message(f"🎯 Le défi personnalisé est pour {membre.mention} : **{defi_choisi}**", ephemeral=False)
+        message = await interaction.channel.send(f"🎯 {membre.mention}, ton défi personnalisé est : **{defi_choisi}**\n\nUn autre membre doit réagir avec ✅ pour valider ce défi !")
         await message.add_reaction("✅")
 
         def check(reaction, user):
             return (
                 reaction.message.id == message.id and
                 str(reaction.emoji) == "✅" and
-                user.id != interaction.user.id and
+                user.id != membre.id and
                 not user.bot
             )
 
         reaction, user = await bot.wait_for("reaction_add", check=check)
-        ajouter_point(interaction.user.name)
-        await interaction.channel.send(f"✅ {interaction.user.mention} a validé son défi grâce à {user.mention} ! +1 point.")
+        ajouter_point(membre.name)
+        await interaction.channel.send(f"✅ {membre.mention} a validé son défi grâce à {user.mention} ! +1 point.")
     else:
         await interaction.response.send_message("⚠️ Aucun défi personnalisé n'est disponible.")
 
